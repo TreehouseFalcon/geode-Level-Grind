@@ -1,3 +1,6 @@
+# 1.5.6
+- Added random page button.
+
 # 1.5.5
 - Changed base url from delivel.tech/grindapi to api.delivel.tech after server maintenance.
 
