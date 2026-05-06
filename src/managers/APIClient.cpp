@@ -1,4 +1,5 @@
 #include "APIClient.hpp"
+#include "Geode/platform/windows.hpp"
 #include "Geode/utils/async.hpp"
 #include "Geode/utils/web.hpp"
 #include <Geode/binding/GJAccountManager.hpp>
@@ -34,6 +35,111 @@ GetLevelsBody APIClient::makeGetLevelsBody(
     ret.versions = versions;
     ret.isNewerFirst = isNewerFirst;
     ret.isRecentlyAdded = isRecentlyAdded;
+
+    return ret;
+}
+
+web::WebFuture APIClient::newlevel(ManageLevelBody body) {
+    auto req = web::WebRequest();
+    matjson::Value reqBody;
+
+    reqBody["id"] = body.id;
+    reqBody["name"] = body.name;
+    reqBody["difficulty"] = body.difficulty;
+    reqBody["length"] = body.length;
+
+    reqBody["token"] = DataManager::getInstance().getUserToken();
+    reqBody["account_id"] = GJAccountManager::get()->m_accountID;
+
+    if (body.difficulty == 10) {
+        reqBody["demon_difficulty"] = body.demonDifficulty;
+    }
+
+    if (body.star) reqBody["star"] = body.star;
+    if (body.moon) reqBody["moon"] = body.moon;
+    if (body.coin) reqBody["coin"] = body.coin;
+    if (body.demon) reqBody["demon"] = body.demon;
+
+    reqBody["added_by"] = GJAccountManager::get()->m_username.c_str();
+
+    req.bodyJSON(reqBody);
+
+    return req.post(fmt::format("{}{}", baseUrl, "/new_level"));
+}
+
+bool APIClient::newLevelParse(web::WebResponse res) {
+    bool ret = false;
+    if (!res.ok()) {
+        log::error("bad web req, code: {}", res.code());
+        return ret;
+    }
+
+    ret = true;
+    return ret;
+}
+
+web::WebFuture APIClient::getGrindPacks() {
+    auto req = web::WebRequest();
+
+    return req.get(fmt::format("{}{}", baseUrl, "/get_grind_packs"));
+}
+
+GetGrindPacksResponse APIClient::getGrindPacksParse(web::WebResponse res) {
+    GetGrindPacksResponse ret;
+
+    if (!res.ok()) {
+        ret.ok = false;
+        log::error("bad web req, code: {}", res.code());
+        return ret;
+    }
+
+    auto jsonRes = res.json();
+    if (!jsonRes) {
+        ret.ok = false;
+        log::error("bad web req, code: {}", res.code());
+        return ret;
+    }
+
+    auto json = jsonRes.unwrap();
+
+    ret.ok = json["ok"].asBool().unwrapOrDefault();
+
+    if (!ret.ok) {
+        log::error("bad web req, code: {}", res.code());
+        return ret;
+    }
+
+    auto packs = json["grindPacks"].asArray();
+
+    if (!packs) {
+        ret.ok = false;
+        log::error("bad web req, code: {}", res.code());
+        return ret;
+    }
+
+    std::vector<GrindPack> arr;
+
+    for (const auto& val : packs.unwrap()) {
+        GrindPack pack;
+
+        pack.id = val["id"].asInt().unwrapOrDefault();
+        pack.title = val["title"].asString().unwrapOrDefault();
+        pack.difficulty = static_cast<CustomDifficultyEnum>(val["difficulty"].asInt().unwrapOrDefault());
+        pack.levels = {
+            val["levelId1"].as<int>().unwrapOrDefault(),
+            val["levelId2"].as<int>().unwrapOrDefault(),
+            val["levelId3"].as<int>().unwrapOrDefault()
+        };
+        pack.color = {
+            static_cast<GLubyte>(val["color1"].as<int>().unwrapOrDefault()),
+            static_cast<GLubyte>(val["color2"].as<int>().unwrapOrDefault()),
+            static_cast<GLubyte>(val["color3"].as<int>().unwrapOrDefault()),
+        };
+
+        arr.push_back(pack);
+    }
+
+    ret.packs = arr;
 
     return ret;
 }
@@ -384,6 +490,47 @@ ChangePointResponse APIClient::changePointParse(web::WebResponse res) {
     auto json = jsonRes.unwrap();
 
     ret.ok = json["ok"].asBool().unwrapOrDefault();
+
+    return ret;
+}
+
+web::WebFuture APIClient::syncLevels(int addThreshold, int deleteThreshold, int coinAddThreshold) {
+    auto req = web::WebRequest();
+    req.timeout(std::chrono::seconds{30});
+    matjson::Value reqBody;
+
+    reqBody["accountID"] = GJAccountManager::get()->m_accountID;
+    reqBody["token"] = DataManager::getInstance().getUserToken();
+    reqBody["addThreshold"] = addThreshold;
+    reqBody["deleteThreshold"] = deleteThreshold;
+    reqBody["coinAddThreshold"] = coinAddThreshold;
+
+    req.bodyJSON(reqBody);
+    return req.post(fmt::format("{}{}", baseUrl, "/sync_levels"));
+}
+
+SyncLevelsResponse APIClient::syncLevelsParse(web::WebResponse res) {
+    SyncLevelsResponse ret;
+
+    if (!res.ok()) {
+        log::error("bad web req, code: {}", res.code());
+        ret.ok = false;
+        return ret;
+    }
+
+    auto jsonRes = res.json();
+    if (!jsonRes) {
+        log::error("bad web req, code: {}", res.code());
+        ret.ok = false;
+        return ret;
+    }
+
+    auto json = jsonRes.unwrap();
+
+    ret.ok = json["ok"].asBool().unwrapOrDefault();
+    ret.deleted = json["deleted"].asInt().unwrapOrDefault();
+    ret.inserted = json["inserted"].asInt().unwrapOrDefault();
+    ret.coinUpdates = json["coinUpdates"].asInt().unwrapOrDefault();
 
     return ret;
 }

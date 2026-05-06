@@ -5,6 +5,7 @@
 #include "Geode/utils/web.hpp"
 #include <Geode/Geode.hpp>
 #include <string>
+#include <utility>
 
 using namespace geode::prelude;
 
@@ -87,6 +88,15 @@ public:
 
     web::WebFuture changePoint(PointType type, CoinPointType coinType, ManageLevelBody levelBody);
     ChangePointResponse changePointParse(web::WebResponse res);
+
+    web::WebFuture syncLevels(int addThreshold, int deleteThreshold, int coinAddThreshold);
+    SyncLevelsResponse syncLevelsParse(web::WebResponse res);
+
+    web::WebFuture newlevel(ManageLevelBody body);
+    bool newLevelParse(web::WebResponse res);
+
+    web::WebFuture getGrindPacks();
+    GetGrindPacksResponse getGrindPacksParse(web::WebResponse res);
 
     // argon
     void performGetToken();

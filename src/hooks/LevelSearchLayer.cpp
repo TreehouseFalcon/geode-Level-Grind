@@ -17,7 +17,11 @@ class $modify(LevelGrind, LevelSearchLayer) {
 
         Build(CCSprite::create("search_btn_1.png"_spr))
             .scale(0.67f)
-            .intoMenuItem([] {
+            .intoMenuItem([this] {
+                auto searchBar = typeinfo_cast<CCTextInputNode*>(getChildByIDRecursive("search-bar"));
+		        if (searchBar) {
+			        searchBar->onClickTrackNode(false);
+		        }
                 levelgrind::MainLayer::create()->open();
             })
             .id("level-grind-btn")

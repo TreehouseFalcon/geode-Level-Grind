@@ -169,8 +169,6 @@ bool GuidePopup::initPage(GuidePage page) {
             return initContribRoleGuidePage();
         case GuidePage::BoosterRoleGuide:
             return initBoosterRoleGuidePage();
-        case GuidePage::RandomButtonGuide:
-            return initRandomButtonGuidePage();
     }
 
     return false;
@@ -211,7 +209,6 @@ bool GuidePopup::initMainPage() {
     listNode->addCell(createGuideSection("Pet Info", [this] { initPage(GuidePage::PetGuide); }, 2));
     listNode->addCell(createGuideSection("Weekly Achievements", [this] { initPage(GuidePage::WeeklyAchievementsGuide); }, 3));
     listNode->addCell(createGuideSection("Notes Info", [this] { initPage(GuidePage::NotesGuide); }, 4));
-    listNode->addCell(createGuideSection("Random Button", [this] { initPage(GuidePage::RandomButtonGuide); }, 11));
     listNode->addCell(createGuideSection("Owner Role", [this] { initPage(GuidePage::OwnerRoleGuide); }, 5));
     listNode->addCell(createGuideSection("Admin Role", [this] { initPage(GuidePage::AdminRoleGuide); }, 6));
     listNode->addCell(createGuideSection("Helper Role", [this] { initPage(GuidePage::HelperRoleGuide); }, 7));
@@ -253,6 +250,7 @@ bool GuidePopup::initMainGuidePage() {
         "<cp>Moon</c>: searching for platformer levels.\n\n" \
         "<co>Coin</c>: searching for levels with easy or free coins.\n\n" \
         "<cr>Demon</c>: searching for demon levels.\n\n" \
+        "There is also a <co>random button</c>. By using this, it will search for a random level that matches the applied options.\n\n" \
         "Other settings are quite self-explanatory, but if you need more info, feel free to join our [<cp>Discord server</c>](https://discord.gg/tmf5xtCX5y) by clicking the Discord button at the bottom right corner of this menu!"
     );
     addScrollbar(typeinfo_cast<geode::MDTextArea*>(getChildByIDRecursive("md-text-area"))->getScrollLayer());
@@ -375,18 +373,6 @@ bool GuidePopup::initBoosterRoleGuidePage() {
         "# <cb>Booster Role</c>\n\n"
         "<cb>Boosters</c> help our <cp>Discord server</c> by providing server boosts.\n"
         "Their support <cg>is greatly appreciated</c>!"
-    );
-    addScrollbar(typeinfo_cast<geode::MDTextArea*>(getChildByIDRecursive("md-text-area"))->getScrollLayer());
-    
-    return true;
-}
-
-bool GuidePopup::initRandomButtonGuidePage() {
-    addReturnButton();
-    addGrindLogo();
-    addTextArea(
-        "# <cl>Random Button</c>\n\n"
-        "<cl>Random Button</c> is made to search for a level selected based on your currently active filters."
     );
     addScrollbar(typeinfo_cast<geode::MDTextArea*>(getChildByIDRecursive("md-text-area"))->getScrollLayer());
     

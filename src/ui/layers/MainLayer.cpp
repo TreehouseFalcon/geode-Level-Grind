@@ -4,6 +4,7 @@
 #include "Geode/cocos/label_nodes/CCLabelBMFont.h"
 #include "Geode/cocos/menu_nodes/CCMenu.h"
 #include "Geode/cocos/sprite_nodes/CCSprite.h"
+#include "Geode/ui/BasedButtonSprite.hpp"
 #include "Geode/ui/Layout.hpp"
 #include "Geode/ui/NineSlice.hpp"
 #include <Geode/binding/ButtonSprite.hpp>
@@ -15,11 +16,14 @@
 
 #include "../../utils/globals.hpp"
 #include "../../utils/utils.hpp"
+#include "../../ui/popups/StaffPopup.hpp"
 #include "../../managers/APIClient.hpp"
+#include "../../managers/DataManager.hpp"
 #include "../../ui/popups/WeeklyAchievementPopup.hpp"
 #include "../popups/GuidePopup.hpp"
 #include "../popups/AnnouncementsPopup.hpp"
 #include "../popups/EventPopup.hpp"
+#include "GrindPacksLayer.hpp"
 #include "CustomBrowserLayer.hpp"
 
 #include "../popups/DifficultySelectorPopup.hpp"
@@ -859,6 +863,32 @@ bool MainLayer::initFarMenus() {
         .id("event-btn")
         .parent(leftSideMenu)
         .collect();
+
+    auto getBadge = [] {
+        GrindPosition pos = DataManager::getInstance().getUserPosition();
+        if (pos == GrindPosition::Admin) return "badge_admin.png"_spr;
+        else if (pos == GrindPosition::Owner) return "badge_owner.png"_spr;
+        else return "";
+    };
+
+    if (DataManager::getInstance().getUserPosition() == GrindPosition::Admin
+    || DataManager::getInstance().getUserPosition() == GrindPosition::Owner) {
+        auto staffBtn = Build(CircleButtonSprite::createWithSprite(getBadge(), 0.8f, CircleBaseColor::Blue))
+            .with([](CircleButtonSprite* spr) {
+                spr->getTopNode()->setPosition({
+                    spr->getTopNode()->getPositionX() + 1,
+                    spr->getTopNode()->getPositionY() - 1
+                });
+            })
+            .scale(1.2f)
+            .intoMenuItem([] {
+                GrindPacksLayer::create()->open();
+            })
+            .scaleMult(1.1f)
+            .id("staff-btn")
+            .parent(leftSideMenu)
+            .collect();
+    }
 
     leftSideMenu->updateLayout();
 

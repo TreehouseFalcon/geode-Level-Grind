@@ -366,8 +366,27 @@ bool ManageLevelPopup::init(GJGameLevel* level) {
                     .collect();
             } else {
                 Build(ButtonSprite::create("Add", "bigFont.fnt", "GJ_button_01.png"))
-                    .intoMenuItem([] {
+                    .intoMenuItem([self] {
+                        auto uPopup = UploadActionPopup::create(nullptr, "Adding level...");
+                        uPopup->show();
 
+                        auto uPopupRef = Ref(uPopup);
+
+                        self->m_listener.spawn(
+                            APIClient::getInstance().newlevel(self->m_body),
+                            [uPopupRef](web::WebResponse res) {
+                                if (!uPopupRef) return;
+                                auto parsed = APIClient::getInstance().newLevelParse(res);
+
+                                if (parsed) {
+                                    uPopupRef->showSuccessMessage("Success! Level added.");
+                                    return;
+                                } else {
+                                    uPopupRef->showFailMessage("Failed! Try again later.");
+                                    return;
+                                }
+                            }
+                        );
                     })
                     .parent(self->m_adminButtonsMenu)
                     .collect();

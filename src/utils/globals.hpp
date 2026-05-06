@@ -1,6 +1,8 @@
 #pragma once
 #include "Geode/cocos/cocoa/CCObject.h"
+#include "ccTypes.h"
 #include <Geode/Enums.hpp>
+#include <Geode/binding/GJDifficultySprite.hpp>
 #include <string>
 namespace levelgrind {
 
@@ -85,6 +87,13 @@ namespace levelgrind {
         bool ok;
     };
 
+    struct SyncLevelsResponse {
+        bool ok;
+        int deleted;
+        int inserted;
+        int coinUpdates;
+    };
+
     struct ManageLevelBody {
         int id;
         std::string name;
@@ -108,7 +117,6 @@ namespace levelgrind {
         ArtistRoleGuide = 7,
         ContribRoleGuide = 8,
         BoosterRoleGuide = 9,
-        RandomButtonGuide = 10,
         MainPage = 11
     };
 
@@ -120,6 +128,39 @@ namespace levelgrind {
     enum EventType {
         Daily = 0,
         Weekly = 1
+    };
+
+    struct GrindPackLevels {
+        int id1;
+        int id2;
+        int id3;
+    };
+
+    enum CustomDifficultyEnum {
+        Auto = 1,
+        Easy = 2,
+        Normal = 3,
+        Hard = 4,
+        Harder = 5,
+        Insane = 6,
+        EasyDemon = 7,
+        MediumDemon = 8,
+        HardDemon = 9,
+        InsaneDemon = 10,
+        ExtremeDemon = 11
+    };
+
+    struct GrindPack {
+        int id;
+        std::string title;
+        cocos2d::ccColor3B color;
+        GrindPackLevels levels;
+        CustomDifficultyEnum difficulty;
+    };
+
+    struct GetGrindPacksResponse {
+        bool ok;
+        std::vector<GrindPack> packs;
     };
 
     struct AnnouncementInfo {

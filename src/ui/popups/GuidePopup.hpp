@@ -37,7 +37,6 @@ private:
     bool initArtistRoleGuidePage();
     bool initContribRoleGuidePage();
     bool initBoosterRoleGuidePage();
-    bool initRandomButtonGuidePage();
 
     void removePrevious();
 };
