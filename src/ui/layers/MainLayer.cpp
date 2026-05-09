@@ -4,7 +4,6 @@
 #include "Geode/cocos/label_nodes/CCLabelBMFont.h"
 #include "Geode/cocos/menu_nodes/CCMenu.h"
 #include "Geode/cocos/sprite_nodes/CCSprite.h"
-#include "Geode/ui/BasedButtonSprite.hpp"
 #include "Geode/ui/Layout.hpp"
 #include "Geode/ui/NineSlice.hpp"
 #include <Geode/binding/ButtonSprite.hpp>
@@ -18,7 +17,6 @@
 #include "../../utils/utils.hpp"
 #include "../../ui/popups/StaffPopup.hpp"
 #include "../../managers/APIClient.hpp"
-#include "../../managers/DataManager.hpp"
 #include "../../ui/popups/WeeklyAchievementPopup.hpp"
 #include "../popups/GuidePopup.hpp"
 #include "../popups/AnnouncementsPopup.hpp"
@@ -28,7 +26,6 @@
 
 #include "../popups/DifficultySelectorPopup.hpp"
 #include "../popups/DiscordPopup.hpp"
-#include "../popups/CreditsPopup.hpp"
 #include "Geode/ui/Notification.hpp"
 #include "Geode/utils/cocos.hpp"
 #include "Geode/utils/web.hpp"
@@ -70,7 +67,6 @@ MainLayer* MainLayer::create() {
 
 bool MainLayer::init() {
     if (!BaseLayer::init()) return false;
-    if (!initFarMenus()) return false;
     if (!initMainPanel()) return false;
     if (!initMD()) return false;
 
@@ -815,122 +811,6 @@ bool MainLayer::initMD() {
         .collect();
 
     if (!versionLabel) return false;
-
-    return true;
-}
-
-bool MainLayer::initFarMenus() {
-    auto leftSideMenu = Build<CCMenu>::create()
-        .layout(ColumnLayout::create()
-                    ->setGap(5)
-                    ->setAxisAlignment(AxisAlignment::Start))
-        .parent(this)
-        .contentSize(48.f, 250.f)
-        .anchorPoint(0.f, 0.f)
-        .scale(0.75f)
-        .pos(fromBottomLeft({ 15.f, 13.f }))
-        .id("left-side-menu")
-        .collect();
-
-    if (!leftSideMenu) return false;
-
-    auto announcementBtn = Build<CCSprite>::create("ann_btn.png"_spr)
-        .intoMenuItem([] {
-            AnnouncementsPopup::create()->show();
-        })
-        .scaleMult(1.1f)
-        .id("announcement-btn")
-        .parent(leftSideMenu)
-        .collect();
-
-    auto weeklyAchievementBtn = Build(CircleButtonSprite::createWithSpriteFrameName("rankIcon_1_001.png", 1.f, CircleBaseColor::Blue))
-        .scale(1.2f)
-        .intoMenuItem([] {
-            auto wap = WeeklyAchievementPopup::create();
-            wap->show();
-        })
-        .scaleMult(1.1f)
-        .id("weekly-achievement-btn")
-        .parent(leftSideMenu)
-        .collect();
-
-    auto eventBtn = Build(CircleButtonSprite::createWithSpriteFrameName("gj_dailyCrown_001.png", 1.f, CircleBaseColor::Blue))
-        .scale(1.2f)
-        .intoMenuItem([] {
-            EventPopup::create(EventType::Daily)->show();
-        })
-        .scaleMult(1.1f)
-        .id("event-btn")
-        .parent(leftSideMenu)
-        .collect();
-
-    auto getBadge = [] {
-        GrindPosition pos = DataManager::getInstance().getUserPosition();
-        if (pos == GrindPosition::Admin) return "badge_admin.png"_spr;
-        else if (pos == GrindPosition::Owner) return "badge_owner.png"_spr;
-        else return "";
-    };
-
-    if (DataManager::getInstance().getUserPosition() == GrindPosition::Admin
-    || DataManager::getInstance().getUserPosition() == GrindPosition::Owner) {
-        auto staffBtn = Build(CircleButtonSprite::createWithSprite(getBadge(), 0.8f, CircleBaseColor::Blue))
-            .with([](CircleButtonSprite* spr) {
-                spr->getTopNode()->setPosition({
-                    spr->getTopNode()->getPositionX() + 1,
-                    spr->getTopNode()->getPositionY() - 1
-                });
-            })
-            .scale(1.2f)
-            .intoMenuItem([] {
-                GrindPacksLayer::create()->open();
-            })
-            .scaleMult(1.1f)
-            .id("staff-btn")
-            .parent(leftSideMenu)
-            .collect();
-    }
-
-    leftSideMenu->updateLayout();
-
-    auto rightSideMenu = Build<CCMenu>::create()
-        .layout(ColumnLayout::create()
-                    ->setGap(5)
-                    ->setAxisAlignment(AxisAlignment::Start))
-        .parent(this)
-        .contentSize(48.f, 250.f)
-        .scale(0.75f)
-        .anchorPoint(1.f, 0.f)
-        .pos(fromBottomRight({ 10.f, 13.f }))
-        .id("right-side-menu")
-        .collect();
-
-    if (!rightSideMenu) return false;
-
-    auto infoBtn = Build<CCSprite>::create("info_btn.png"_spr)
-        .intoMenuItem([] {
-            GuidePopup::create(GuidePage::MainPage, GuidePopupState::FromMainLayer)->show();
-        })
-        .scaleMult(1.1f)
-        .id("info-btn")
-        .parent(rightSideMenu)
-        .collect();
-
-    auto discordBtn = Build<CCSprite>::create("discord_btn.png"_spr)
-        .intoMenuItem([] { DiscordPopup::create()->show(); })
-        .scaleMult(1.1f)
-        .id("discord-btn")
-        .parent(rightSideMenu)
-        .collect();
-
-    Build<CCSprite>::create("credits_btn.png"_spr)
-        .intoMenuItem([] {
-            CreditsPopup::create()->show();
-        })
-        .scaleMult(1.1f)
-        .id("credits-btn")
-        .parent(rightSideMenu)
-        .intoParent()
-        .updateLayout();
 
     return true;
 }

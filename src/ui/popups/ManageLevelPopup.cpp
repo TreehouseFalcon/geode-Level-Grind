@@ -343,13 +343,6 @@ bool ManageLevelPopup::init(GJGameLevel* level) {
                     .collect();
             }
 
-            Build(ButtonSprite::create("Event", "bigFont.fnt", "GJ_button_01.png"))
-                    .intoMenuItem([] {
-
-                    })
-                    .parent(self->m_adminButtonsMenu)
-                    .collect();
-
             if (parsed.isAdded) {
                 Build(ButtonSprite::create("Delete", "bigFont.fnt", "GJ_button_06.png"))
                     .intoMenuItem([] {
@@ -359,8 +352,27 @@ bool ManageLevelPopup::init(GJGameLevel* level) {
                     .collect();
 
                 Build(ButtonSprite::create("Re-add", "bigFont.fnt", "GJ_button_02.png"))
-                    .intoMenuItem([] {
+                    .intoMenuItem([self] {
+                        auto uPopup = UploadActionPopup::create(nullptr, "Re-adding level...");
+                        uPopup->show();
 
+                        auto uPopupRef = Ref(uPopup);
+
+                        self->m_listener.spawn(
+                            APIClient::getInstance().newlevel(self->m_body),
+                            [uPopupRef](web::WebResponse res) {
+                                if (!uPopupRef) return;
+                                auto parsed = APIClient::getInstance().newLevelParse(res);
+
+                                if (parsed) {
+                                    uPopupRef->showSuccessMessage("Success! Level re-added.");
+                                    return;
+                                } else {
+                                    uPopupRef->showFailMessage("Failed! Try again later.");
+                                    return;
+                                }
+                            }
+                        );
                     })
                     .parent(self->m_adminButtonsMenu)
                     .collect();

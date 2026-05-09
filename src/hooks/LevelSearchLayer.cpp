@@ -1,7 +1,7 @@
 #include <Geode/Geode.hpp>
 #include <Geode/modify/LevelSearchLayer.hpp>
 
-#include "../ui/layers/MainLayer.hpp"
+#include "../ui/layers/CreatorLayer.hpp"
 
 using namespace geode::prelude;
 
@@ -22,7 +22,7 @@ class $modify(LevelGrind, LevelSearchLayer) {
 		        if (searchBar) {
 			        searchBar->onClickTrackNode(false);
 		        }
-                levelgrind::MainLayer::create()->open();
+                levelgrind::CreatorLayer::create()->open();
             })
             .id("level-grind-btn")
             .parent(menu)

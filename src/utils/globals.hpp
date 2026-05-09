@@ -127,7 +127,8 @@ namespace levelgrind {
 
     enum EventType {
         Daily = 0,
-        Weekly = 1
+        Weekly = 1,
+        Monthly = 2
     };
 
     struct GrindPackLevels {
