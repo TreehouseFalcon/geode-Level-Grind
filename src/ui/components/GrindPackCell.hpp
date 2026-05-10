@@ -1,18 +1,29 @@
+#include <Geode/Enums.hpp>
 #include <Geode/Geode.hpp>
 #include <Geode/binding/ButtonSprite.hpp>
 #include <Geode/binding/GJDifficultySprite.hpp>
+#include <Geode/binding/GJSearchObject.hpp>
 #include <Geode/binding/GameLevelManager.hpp>
 #include <Geode/binding/GameManager.hpp>
 #include <Geode/binding/GameStatsManager.hpp>
 #include "../../utils/globals.hpp"
+#include "Geode/cocos/CCDirector.h"
 #include "Geode/cocos/base_nodes/CCNode.h"
 #include "Geode/cocos/label_nodes/CCLabelBMFont.h"
+#include "Geode/cocos/layers_scenes_transitions_nodes/CCScene.h"
+#include "Geode/cocos/layers_scenes_transitions_nodes/CCTransition.h"
+#include "Geode/cocos/menu_nodes/CCMenu.h"
 #include "Geode/cocos/sprite_nodes/CCSprite.h"
+#include "Geode/ui/Layout.hpp"
 #include "Geode/ui/ProgressBar.hpp"
 #include "ccTypes.h"
 
+#include <Geode/binding/LevelBrowserLayer.hpp>
 #include <UIBuilder.hpp>
 #include <fmt/base.h>
+#include <fmt/format.h>
+
+#include "../layers/PackBrowserLayer.hpp"
 
 using namespace geode::prelude;
 
@@ -34,17 +45,38 @@ private:
     bool init(GrindPack packInfo) {
         if (!CCNode::init()) return false;
 
-        this->setContentSize({ 356.f, 100.f });
+        this->setContentSize({ 356.f, 60.f });
+
+        auto infoMenu = Build(CCMenu::create())
+            .parent(this)
+            .pos({
+                15,
+                (this->getContentHeight() / 2) + 12
+            })
+            .layout(RowLayout::create()->setGap(10)->setAutoGrowAxis(true)->setAutoScale(false))
+            .anchorPoint({ 0, 0.5f })
+            .id("info-menu")
+            .scale(0.7f)
+            .collect();
+
+        auto otherMenu = Build(CCMenu::create())
+            .parent(this)
+            .pos({
+                15,
+                (this->getContentHeight() / 2) - 12
+            })
+            .layout(RowLayout::create()->setGap(10)->setAutoGrowAxis(true))
+            .anchorPoint({ 0, 0.5f })
+            .id("other-menu")
+            .scale(1.f)
+            .collect();
 
         auto progressBar = Build(ProgressBar::create(ProgressBarStyle::Solid))
-            .parent(this)
-            .pos(
-                this->getContentSize() / 2
-            )
+            .parent(otherMenu)
             .with([packInfo](ProgressBar* bar) {
                 bar->setFillColor(packInfo.color);
             })
-            .anchorPoint({ 0.5f, 0.5f })
+            .anchorPoint({ 0, 0.5f })
             .scale(0.7f)
             .collect();
 
@@ -64,17 +96,9 @@ private:
         std::string completed = fmt::format("{}/3", i);
 
         auto completedLabel = Build(CCLabelBMFont::create(completed.c_str(), "bigFont.fnt"))
+            .scale(0.6f)
             .parent(progressBar)
             .center()
-            .collect();
-
-        auto titleLabel = Build(CCLabelBMFont::create(packInfo.title.c_str(), "bigFont.fnt"))
-            .color(packInfo.color)
-            .parent(this)
-            .pos(
-                this->getContentWidth() / 2.f,
-                (this->getContentHeight() / 2.f) + 32.f
-            )
             .collect();
 
         auto difficultySprite = Build(CCSprite::createWithSpriteFrameName([packInfo] -> const char* {
@@ -93,20 +117,45 @@ private:
                 default: return "diffIcon_00_btn_001.png";
             }
         }()))
+            .parent(infoMenu)
+            .collect();
+
+        auto titleLabel = Build(CCLabelBMFont::create(packInfo.title.c_str(), "bigFont.fnt"))
+            .color(packInfo.color)
+            .parent(infoMenu)
+            .collect();
+
+        auto packTypeSpr = Build(CCSprite::createWithSpriteFrameName(packInfo.isStar ? "GJ_bigStar_noShadow_001.png" : "GJ_bigMoon_noShadow_001.png"))
+            .scale(0.6f)
+            .parent(infoMenu)
+            .collect();
+
+        auto viewBtnMenu = Build(CCMenu::create())
             .parent(this)
             .pos(
-                this->getContentWidth() / 2.f - progressBar->getScaledContentWidth() / 1.5f,
+                (this->getContentWidth() / 2.f + progressBar->getScaledContentWidth() / 1.5f) - 25,
                 this->getContentHeight() / 2.f
             )
+            .id("view-btn-menu")
             .collect();
             
         auto viewBtn = Build(ButtonSprite::create("View", "bigFont.fnt", "GJ_button_01.png"))
-            .parent(this)
-            .pos(
-                this->getContentWidth() / 2.f + progressBar->getScaledContentWidth() / 1.5f,
-                this->getContentHeight() / 2.f
-            )
+            .scale(0.7f)
+            .intoMenuItem([packInfo] {
+                auto layer = PackBrowserLayer::create(packInfo.title, GJSearchObject::create(SearchType::Type19, fmt::format("{},{},{}", 
+                packInfo.levels.id1, packInfo.levels.id2, packInfo.levels.id3)));
+                
+                auto scene = CCScene::create();
+                scene->addChild(layer);
+
+                auto transition = CCTransitionFade::create(0.5f, scene);
+                CCDirector::sharedDirector()->pushScene(transition);
+            })
+            .parent(viewBtnMenu)
             .collect();
+
+        infoMenu->updateLayout();
+        otherMenu->updateLayout();
 
         return true;
     }

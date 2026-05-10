@@ -25,7 +25,6 @@ private:
     bool init() override;
     bool initFarMenus();
     bool initMainPanel();
-    bool initMD();
 
     void update(float dt) override;
 

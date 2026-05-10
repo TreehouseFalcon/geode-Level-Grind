@@ -1,5 +1,4 @@
 #include "APIClient.hpp"
-#include "Geode/platform/windows.hpp"
 #include "Geode/utils/async.hpp"
 #include "Geode/utils/web.hpp"
 #include <Geode/binding/GJAccountManager.hpp>
@@ -36,6 +35,30 @@ GetLevelsBody APIClient::makeGetLevelsBody(
     ret.isNewerFirst = isNewerFirst;
     ret.isRecentlyAdded = isRecentlyAdded;
 
+    return ret;
+}
+
+web::WebFuture APIClient::health() {
+    return web::WebRequest().get(fmt::format("{}{}", baseUrl, "/health"));
+}
+
+bool APIClient::healthParse(web::WebResponse res) {
+    bool ret = false;
+    if (!res.ok()) {
+        log::error("bad web req, code: {}", res.code());
+        return ret;
+    }
+
+    auto jsonRes = res.json();
+
+    if (!jsonRes) {
+        log::error("bad web req, code: {}", res.code());
+        return ret;
+    }
+
+    auto json = jsonRes.unwrap();
+
+    ret = json["status"].asString().unwrapOrDefault() == "healthy";
     return ret;
 }
 
@@ -135,12 +158,45 @@ GetGrindPacksResponse APIClient::getGrindPacksParse(web::WebResponse res) {
             static_cast<GLubyte>(val["color2"].as<int>().unwrapOrDefault()),
             static_cast<GLubyte>(val["color3"].as<int>().unwrapOrDefault()),
         };
+        pack.isStar = val["isStar"].asBool().unwrapOrDefault();
 
         arr.push_back(pack);
     }
 
     ret.packs = arr;
 
+    return ret;
+}
+
+web::WebFuture APIClient::newGrindPack(NewGrindPackBody body) {
+    auto req = web::WebRequest();
+    matjson::Value reqBody;
+
+    reqBody["accountID"] = GJAccountManager::get()->m_accountID;
+    reqBody["token"] = DataManager::getInstance().getUserToken();
+    reqBody["title"] = body.title;
+    reqBody["isStar"] = body.star;
+    reqBody["levelId1"] = body.levelId1;
+    reqBody["levelId2"] = body.levelId2;
+    reqBody["levelId3"] = body.levelId3;
+    reqBody["color1"] = body.color1;
+    reqBody["color2"] = body.color2;
+    reqBody["color3"] = body.color3;
+    reqBody["difficulty"] = body.difficulty;
+    reqBody["username"] = GJAccountManager::get()->m_username.c_str();
+
+    req.bodyJSON(reqBody);
+    return req.post(fmt::format("{}{}", baseUrl, "/new_grind_pack"));
+}
+
+bool APIClient::newGrindPackParse(web::WebResponse res) {
+    bool ret = false;
+    if (!res.ok()) {
+        log::error("bad web req, code: {}", res.code());
+        return ret;
+    }
+
+    ret = true;
     return ret;
 }
 

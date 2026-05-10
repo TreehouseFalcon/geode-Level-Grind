@@ -157,6 +157,7 @@ namespace levelgrind {
         cocos2d::ccColor3B color;
         GrindPackLevels levels;
         CustomDifficultyEnum difficulty;
+        bool isStar;
     };
 
     struct GetGrindPacksResponse {
@@ -266,6 +267,18 @@ namespace levelgrind {
         std::string sprite;
         std::string id;
         cocos2d::SEL_MenuHandler cb;
+    };
+
+    struct NewGrindPackBody {
+        std::string title;
+        bool star;
+        int levelId1;
+        int levelId2;
+        int levelId3;
+        int color1;
+        int color2;
+        int color3;
+        int difficulty;
     };
 
     struct ReqAccessResponse {

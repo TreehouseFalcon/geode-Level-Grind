@@ -1,4 +1,5 @@
 #include "CreatorLayer.hpp"
+#include "Geode/cocos/label_nodes/CCLabelBMFont.h"
 #include "Geode/cocos/menu_nodes/CCMenu.h"
 #include "Geode/cocos/sprite_nodes/CCSprite.h"
 #include "Geode/ui/General.hpp"
@@ -13,7 +14,9 @@
 #include "../popups/EventPopup.hpp"
 #include "../popups/WeeklyAchievementPopup.hpp"
 #include "../../managers/DataManager.hpp"
+#include "../../managers/APIClient.hpp"
 #include "../popups/StaffPopup.hpp"
+#include "Geode/utils/web.hpp"
 #include "GrindPacksLayer.hpp"
 #include "MainLayer.hpp"
 
@@ -32,6 +35,7 @@ CreatorLayer* CreatorLayer::create() {
 bool CreatorLayer::init() {
     if (!BaseLayer::init()) return false;
     if (!initFarMenus()) return false;
+    if (!initMd()) return false;
 
     auto winSize = CCDirector::sharedDirector()->getWinSize();
 
@@ -232,4 +236,44 @@ bool CreatorLayer::initFarMenus() {
     return true;
 }
 
+bool CreatorLayer::initMd() {
+    auto versionLabel = Build(CCLabelBMFont::create(fmt::format("{}", Mod::get()->getVersion()).c_str(), "chatFont.fnt"))
+        .opacity(128)
+        .anchorPoint({ 1.f, 1.f })
+        .pos(fromTopRight({ 5, 5 }))
+        .scale(0.6f)
+        .id("version-label")
+        .parent(this)
+        .collect();
+
+    if (!versionLabel) return false;
+
+    auto serverLabel = Build(CCLabelBMFont::create("Server: Loading...", "chatFont.fnt"))
+        .opacity(128)
+        .anchorPoint({ 1.f, 1.f })
+        .pos(fromTopRight({ 5, 18 }))
+        .scale(0.6f)
+        .id("server-label")
+        .parent(this)
+        .collect();
+
+    auto serverLabelRef = Ref(serverLabel);
+
+    m_listener.spawn(
+        APIClient::getInstance().health(),
+        [serverLabelRef](web::WebResponse res) {
+            if (!serverLabelRef) return;
+            bool ok = APIClient::getInstance().healthParse(res);
+
+            if (ok) {
+                serverLabelRef->setString("Server: Online");
+                return;
+            } else {
+                serverLabelRef->setString("Server: Offline");
+            }
+        }
+    );
+
+    return true;
+}
 }

@@ -5,7 +5,6 @@
 #include "Geode/utils/web.hpp"
 #include <Geode/Geode.hpp>
 #include <string>
-#include <utility>
 
 using namespace geode::prelude;
 
@@ -97,6 +96,12 @@ public:
 
     web::WebFuture getGrindPacks();
     GetGrindPacksResponse getGrindPacksParse(web::WebResponse res);
+
+    web::WebFuture health();
+    bool healthParse(web::WebResponse res);
+
+    web::WebFuture newGrindPack(NewGrindPackBody body);
+    bool newGrindPackParse(web::WebResponse res);
 
     // argon
     void performGetToken();

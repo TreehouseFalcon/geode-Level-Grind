@@ -68,7 +68,6 @@ MainLayer* MainLayer::create() {
 bool MainLayer::init() {
     if (!BaseLayer::init()) return false;
     if (!initMainPanel()) return false;
-    if (!initMD()) return false;
 
     this->scheduleUpdate();
 
@@ -798,21 +797,6 @@ void MainLayer::updateDifficultySelectorVisibility() {
         hasDifficulty(m_difficulties, 8) || hasDifficulty(m_difficulties, 9);
 
     selectorMenu->setVisible(hasSplitDifficulty);
-}
-
-bool MainLayer::initMD() {
-    auto versionLabel = Build(CCLabelBMFont::create(fmt::format("{}", Mod::get()->getVersion()).c_str(), "chatFont.fnt"))
-        .opacity(128)
-        .anchorPoint({ 1.f, 1.f })
-        .pos(fromTopRight({ 5, 5 }))
-        .scale(0.6f)
-        .id("version-label")
-        .parent(this)
-        .collect();
-
-    if (!versionLabel) return false;
-
-    return true;
 }
 
 }
