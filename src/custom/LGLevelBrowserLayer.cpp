@@ -119,6 +119,7 @@ class $modify(LGLevelBrowserLayerCompat, LevelBrowserLayer) {
             m_fields->m_page = 0;
             m_fields->m_totalPages = 1;
 
+            this->setupLevelGrindBackground();
             this->setupLevelGrindUI();
             this->updateLevelGrindPageUI();
             this->fetchLevelGrindIDs();
@@ -274,6 +275,53 @@ class $modify(LGLevelBrowserLayerCompat, LevelBrowserLayer) {
 
         m_fields->m_page = newPage;
         this->loadLevelGrindPage();
+    }
+
+    void setupLevelGrindBackground() {
+        this->setOpacity(0);
+
+        if (Mod::get()->getSavedValue<bool>("disable-custom-background")) {
+            auto bg = createLayerBG();
+            if (bg) {
+                bg->setColor({ 0, 102, 255 });
+                this->addChild(bg, -10);
+            }
+        } else {
+            auto customBg = cue::RepeatingBackground::create("game_bg_01_001.png", 1.0f, cue::RepeatMode::X);
+            if (customBg) {
+                customBg->setColor(Mod::get()->getSavedValue<cocos2d::ccColor3B>("rgbBackground"));
+                customBg->setSpeed(Mod::get()->getSavedValue<float>("background-speed"));
+                this->addChild(customBg, -10);
+            }
+        }
+
+        if (!Mod::get()->getSavedValue<bool>("disable-star-particles")) {
+            auto grindParticles = CCParticleSnow::create();
+            if (grindParticles) {
+                auto texture = CCTextureCache::sharedTextureCache()->addImage("GJ_bigStar_noShadow.png"_spr, true);
+                grindParticles->m_fStartSpin = 0.f;
+                grindParticles->m_fEndSpin = 180.f;
+                grindParticles->m_fStartSize = 6.f;
+                grindParticles->m_fEndSize = 3.f;
+                grindParticles->setTexture(texture);
+                this->addChild(grindParticles, -9);
+            }
+        }
+
+        auto winSize = CCDirector::sharedDirector()->getWinSize();
+
+        auto cornerLeft = CCSprite::createWithSpriteFrameName("GJ_sideArt_001.png");
+        if (cornerLeft) {
+            cornerLeft->setPosition({ 35.5f, 35.5f });
+            this->addChild(cornerLeft, -8);
+        }
+
+        auto cornerRight = CCSprite::createWithSpriteFrameName("GJ_sideArt_001.png");
+        if (cornerRight) {
+            cornerRight->setFlipX(true);
+            cornerRight->setPosition({ winSize.width - 35.5f, 35.5f });
+            this->addChild(cornerRight, -8);
+        }
     }
 
     void setupLevelGrindUI() {
