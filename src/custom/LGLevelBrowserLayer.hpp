@@ -7,6 +7,7 @@
 #include <Geode/Geode.hpp>
 #include <Geode/binding/CCMenuItemSpriteExtra.hpp>
 #include <Geode/binding/GJSearchObject.hpp>
+#include <Geode/binding/LevelBrowserLayer.hpp>
 #include <Geode/binding/LevelManagerDelegate.hpp>
 #include <Geode/binding/SetIDPopupDelegate.hpp>
 #include <Geode/modify/GameLevelManager.hpp>
@@ -15,6 +16,16 @@ using namespace geode::prelude;
 
 class LGLevelBrowserLayer : public CCLayer, public LevelManagerDelegate, public SetIDPopupDelegate {
 public:
+    static LevelBrowserLayer* createCompatible(
+        std::vector<int> difficulties,
+        std::vector<int> lengths,
+        std::vector<std::string> grindTypes,
+        std::vector<int> demonDifficulties,
+        std::vector<int> versions,
+        bool newerFirst,
+        bool recentlyAdded
+    );
+
     static LGLevelBrowserLayer* create(
         std::vector<int> difficulties,
         std::vector<int> lengths,

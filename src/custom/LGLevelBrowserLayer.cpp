@@ -16,9 +16,13 @@
 #include <Geode/binding/SetIDPopup.hpp>
 #include <Geode/modify/GameLevelManager.hpp>
 #include <Geode/modify/LevelInfoLayer.hpp>
+#include <Geode/modify/LevelBrowserLayer.hpp>
 #include <Geode/utils/web.hpp>
 #include <algorithm>
+#include <cstring>
+#include <optional>
 #include <random>
+#include <unordered_map>
 
 #include <cue/RepeatingBackground.hpp>
 
@@ -26,6 +30,561 @@ using namespace geode::prelude;
 
 static constexpr CCSize LIST_SIZE{356.f, 220.f};
 static constexpr int PER_PAGE = 10;
+
+namespace {
+struct LGSearchParams {
+    std::vector<int> difficulties;
+    std::vector<int> lengths;
+    std::vector<std::string> grindTypes;
+    std::vector<int> demonDifficulties;
+    std::vector<int> versions;
+    bool newerFirst = false;
+    bool recentlyAdded = false;
+};
+
+std::unordered_map<GJSearchObject*, LGSearchParams> s_pendingLGSearches;
+
+std::string joinLevelIDs(std::vector<int> const& ids, int start, int end) {
+    std::string levelIDs;
+    for (int i = start; i < end; ++i) {
+        if (!levelIDs.empty()) levelIDs += ",";
+        levelIDs += numToString(ids[i]);
+    }
+    return levelIDs;
+}
+}
+
+LevelBrowserLayer* LGLevelBrowserLayer::createCompatible(
+    std::vector<int> difficulties,
+    std::vector<int> lengths,
+    std::vector<std::string> grindTypes,
+    std::vector<int> demonDifficulties,
+    std::vector<int> versions,
+    bool newerFirst,
+    bool recentlyAdded
+) {
+    auto object = GJSearchObject::create(SearchType::Type19, "0");
+    if (!object) return nullptr;
+
+    s_pendingLGSearches[object] = LGSearchParams {
+        std::move(difficulties),
+        std::move(lengths),
+        std::move(grindTypes),
+        std::move(demonDifficulties),
+        std::move(versions),
+        newerFirst,
+        recentlyAdded
+    };
+
+    auto layer = LevelBrowserLayer::create(object);
+    if (!layer) {
+        s_pendingLGSearches.erase(object);
+    }
+    return layer;
+}
+
+class $modify(LGLevelBrowserLayerCompat, LevelBrowserLayer) {
+    struct Fields {
+        bool m_isLevelGrindBrowser = false;
+        bool m_fetchingIDs = false;
+        bool m_waitingForGDPage = false;
+        LGSearchParams m_params;
+        geode::async::TaskHolder<web::WebResponse> m_searchTask;
+        std::vector<int> m_allLevelIDs;
+        int m_totalLevels = 0;
+        int m_totalPages = 1;
+        int m_page = 0;
+        int m_completedLevels = 0;
+        bool m_shouldShowProgressBar = false;
+        float m_completionPercent = 0.f;
+        CCLabelBMFont* m_completionInfoLabel = nullptr;
+        ProgressBar* m_progressBar = nullptr;
+        CCMenuItemSpriteExtra* m_randomPageButton = nullptr;
+    };
+
+    bool init(GJSearchObject* object) {
+        auto pending = s_pendingLGSearches.find(object);
+        auto params = pending != s_pendingLGSearches.end()
+            ? std::optional<LGSearchParams>(std::move(pending->second))
+            : std::nullopt;
+        if (pending != s_pendingLGSearches.end()) {
+            s_pendingLGSearches.erase(pending);
+        }
+
+        if (!LevelBrowserLayer::init(object)) return false;
+
+        if (params) {
+            m_fields->m_isLevelGrindBrowser = true;
+            m_fields->m_params = std::move(*params);
+            m_fields->m_page = 0;
+            m_fields->m_totalPages = 1;
+
+            this->setupLevelGrindUI();
+            this->updateLevelGrindPageUI();
+            this->fetchLevelGrindIDs();
+        }
+
+        return true;
+    }
+
+    void onExit() {
+        if (m_fields->m_isLevelGrindBrowser) {
+            m_fields->m_searchTask.cancel();
+        }
+        LevelBrowserLayer::onExit();
+    }
+
+    void onInfo(CCObject* sender) {
+        if (!m_fields->m_isLevelGrindBrowser) {
+            LevelBrowserLayer::onInfo(sender);
+            return;
+        }
+
+        FLAlertLayer::create(
+            "Levels for grinding",
+            "Here you can find <cp>levels</c> for <cy>grinding</c>!\n"
+            "You can also <cr>configure</c> what levels to search for in the main <cj>Level Grind</c> layer.\n"
+            "Thanks for using <cj>Level Grind</c> mod!",
+            "OK"
+        )->show();
+    }
+
+    void onRefresh(CCObject* sender) {
+        if (!m_fields->m_isLevelGrindBrowser) {
+            LevelBrowserLayer::onRefresh(sender);
+            return;
+        }
+        if (m_fields->m_fetchingIDs || m_fields->m_waitingForGDPage) return;
+        this->fetchLevelGrindIDs();
+    }
+
+    void onNextPage(CCObject* sender) {
+        if (!m_fields->m_isLevelGrindBrowser) {
+            LevelBrowserLayer::onNextPage(sender);
+            return;
+        }
+        if (m_fields->m_fetchingIDs || m_fields->m_waitingForGDPage) return;
+        if (m_fields->m_page + 1 >= m_fields->m_totalPages) return;
+
+        m_fields->m_page++;
+        this->loadLevelGrindPage();
+    }
+
+    void onPrevPage(CCObject* sender) {
+        if (!m_fields->m_isLevelGrindBrowser) {
+            LevelBrowserLayer::onPrevPage(sender);
+            return;
+        }
+        if (m_fields->m_fetchingIDs || m_fields->m_waitingForGDPage) return;
+        if (m_fields->m_page <= 0) return;
+
+        m_fields->m_page--;
+        this->loadLevelGrindPage();
+    }
+
+    void onGoToLastPage(CCObject* sender) {
+        if (!m_fields->m_isLevelGrindBrowser) {
+            LevelBrowserLayer::onGoToLastPage(sender);
+            return;
+        }
+        if (m_fields->m_fetchingIDs || m_fields->m_waitingForGDPage) return;
+        if (m_fields->m_totalPages <= 1) return;
+
+        m_fields->m_page = m_fields->m_totalPages - 1;
+        this->loadLevelGrindPage();
+    }
+
+    void onGoToPage(CCObject* sender) {
+        if (!m_fields->m_isLevelGrindBrowser) {
+            LevelBrowserLayer::onGoToPage(sender);
+            return;
+        }
+
+        auto current = std::clamp(m_fields->m_page + 1, 1, std::max(1, m_fields->m_totalPages));
+        auto popup = SetIDPopup::create(
+            current, 1, std::max(1, m_fields->m_totalPages), "Go to Page", "Go",
+            false, current, 60.f, true, true
+        );
+        if (popup) {
+            popup->m_delegate = this;
+            popup->show();
+        }
+    }
+
+    void setIDPopupClosed(SetIDPopup* popup, int value) {
+        if (!m_fields->m_isLevelGrindBrowser) {
+            LevelBrowserLayer::setIDPopupClosed(popup, value);
+            return;
+        }
+        if (!popup || popup->m_cancelled) return;
+
+        value = std::clamp(value, 1, std::max(1, m_fields->m_totalPages));
+        auto newPage = value - 1;
+        if (newPage == m_fields->m_page) return;
+
+        m_fields->m_page = newPage;
+        this->loadLevelGrindPage();
+    }
+
+    void setupPageInfo(gd::string info, char const* key) {
+        if (!m_fields->m_isLevelGrindBrowser) {
+            LevelBrowserLayer::setupPageInfo(info, key);
+            return;
+        }
+        if (!m_fields->m_waitingForGDPage || !this->isCurrentLevelGrindKey(key)) return;
+        this->updateLevelGrindPageUI();
+    }
+
+    void loadLevelsFinished(CCArray* levels, char const* key, int type) {
+        if (!m_fields->m_isLevelGrindBrowser) {
+            LevelBrowserLayer::loadLevelsFinished(levels, key, type);
+            return;
+        }
+        if (!m_fields->m_waitingForGDPage || !this->isCurrentLevelGrindKey(key)) return;
+
+        m_fields->m_waitingForGDPage = false;
+        LevelBrowserLayer::loadLevelsFinished(levels, key, type);
+        this->updateLevelGrindPageUI();
+    }
+
+    void loadLevelsFailed(char const* key, int type) {
+        if (!m_fields->m_isLevelGrindBrowser) {
+            LevelBrowserLayer::loadLevelsFailed(key, type);
+            return;
+        }
+        if (!m_fields->m_waitingForGDPage || !this->isCurrentLevelGrindKey(key)) return;
+
+        m_fields->m_waitingForGDPage = false;
+        LevelBrowserLayer::loadLevelsFailed(key, type);
+        this->updateLevelGrindPageUI();
+    }
+
+    void onRandomLevelGrindPage(CCObject*) {
+        if (!m_fields->m_isLevelGrindBrowser) return;
+        if (m_fields->m_fetchingIDs || m_fields->m_waitingForGDPage) return;
+        if (m_fields->m_totalPages <= 1) return;
+
+        static std::mt19937 rng(std::random_device{}());
+        std::uniform_int_distribution<int> dist(0, m_fields->m_totalPages - 1);
+
+        auto newPage = dist(rng);
+        if (newPage == m_fields->m_page) {
+            newPage = (newPage + 1) % m_fields->m_totalPages;
+        }
+
+        m_fields->m_page = newPage;
+        this->loadLevelGrindPage();
+    }
+
+    void setupLevelGrindUI() {
+        auto winSize = CCDirector::sharedDirector()->getWinSize();
+
+        bool hideCompletionInfo = false;
+        if (auto mod = Mod::get()) {
+            hideCompletionInfo = mod->getSavedValue<bool>("hide-completion-info");
+        }
+
+        m_fields->m_completionInfoLabel = CCLabelBMFont::create("Completed 0 from 0", "goldFont.fnt");
+        if (m_fields->m_completionInfoLabel) {
+            m_fields->m_completionInfoLabel->setPosition({ winSize.width / 2.f, winSize.height - 5.f });
+            m_fields->m_completionInfoLabel->setAnchorPoint({ 0.5f, 1.f });
+            m_fields->m_completionInfoLabel->setScale(0.45f);
+            m_fields->m_completionInfoLabel->setVisible(!hideCompletionInfo);
+            this->addChild(m_fields->m_completionInfoLabel, 10);
+        }
+
+        m_fields->m_progressBar = ProgressBar::create(ProgressBarStyle::Slider);
+        if (m_fields->m_progressBar) {
+            m_fields->m_progressBar->setScale(0.8f);
+            m_fields->m_progressBar->setRotation(-90.f);
+
+            CCPoint barPos = { 55.f, winSize.height / 2.f };
+            if (m_list) {
+                constexpr float gapFromList = 20.f;
+                float listLeftX = m_list->getPositionX() + 5.f;
+                float barHalfThickness = m_fields->m_progressBar->getScaledContentSize().height * 0.5f;
+                barPos = ccp(listLeftX - gapFromList - barHalfThickness, winSize.height / 2.f);
+            }
+            m_fields->m_progressBar->setPosition(barPos);
+            m_fields->m_progressBar->setVisible(false);
+            this->addChild(m_fields->m_progressBar, 10);
+        }
+
+        auto pageMenu = CCMenu::create();
+        pageMenu->setID("lg-level-browser-page-menu");
+        pageMenu->setPosition({ winSize.width - 35.f, winSize.height - 82.f });
+
+        auto randomPageSpr = CCSprite::create("GJ_button_01.png");
+        if (randomPageSpr) {
+            randomPageSpr->setScale(0.7f);
+            if (auto randomIcon = CCSprite::create("random_btn_2.png"_spr)) {
+                auto size = randomPageSpr->getContentSize();
+                randomIcon->setPosition({ size.width / 2.f, size.height / 2.f });
+                randomIcon->setAnchorPoint({ 0.5f, 0.5f });
+                randomIcon->setScale(0.05f);
+                randomPageSpr->addChild(randomIcon, 1);
+            }
+
+            m_fields->m_randomPageButton = CCMenuItemSpriteExtra::create(
+                randomPageSpr, this, menu_selector(LGLevelBrowserLayerCompat::onRandomLevelGrindPage)
+            );
+            if (m_fields->m_randomPageButton) {
+                m_fields->m_randomPageButton->setID("random-page-btn");
+                m_fields->m_randomPageButton->setVisible(false);
+                pageMenu->addChild(m_fields->m_randomPageButton);
+            }
+        }
+
+        this->addChild(pageMenu, 10);
+    }
+
+    bool isCurrentLevelGrindKey(char const* key) {
+        if (!key || !m_searchObject) return true;
+        return std::strcmp(key, m_searchObject->getKey()) == 0;
+    }
+
+    void recalculateLevelGrindCompletionProgress() {
+        m_fields->m_completedLevels = 0;
+        m_fields->m_completionPercent = 0.f;
+
+        auto gsm = GameStatsManager::sharedState();
+        if (gsm) {
+            for (auto levelID : m_fields->m_allLevelIDs) {
+                if (gsm->hasCompletedOnlineLevel(levelID)) {
+                    m_fields->m_completedLevels++;
+                }
+            }
+        }
+
+        if (m_fields->m_totalLevels > 0) {
+            auto percent = static_cast<float>(m_fields->m_completedLevels) /
+                static_cast<float>(m_fields->m_totalLevels);
+            m_fields->m_completionPercent = std::clamp(percent * 100.f, 0.f, 100.f);
+        }
+
+        if (m_fields->m_progressBar) {
+            m_fields->m_progressBar->updateProgress(m_fields->m_completionPercent);
+        }
+        if (m_fields->m_completionInfoLabel) {
+            m_fields->m_completionInfoLabel->setString(
+                fmt::format(
+                    "Completed {} from {}",
+                    m_fields->m_completedLevels,
+                    m_fields->m_totalLevels
+                ).c_str()
+            );
+        }
+    }
+
+    void updateLevelGrindPageUI() {
+        auto totalPages = std::max(1, m_fields->m_totalPages);
+        auto first = m_fields->m_totalLevels > 0 ? m_fields->m_page * PER_PAGE + 1 : 0;
+        auto last = m_fields->m_totalLevels > 0
+            ? std::min((m_fields->m_page + 1) * PER_PAGE, m_fields->m_totalLevels)
+            : 0;
+
+        m_itemCount = m_fields->m_totalLevels;
+        m_lastPage = totalPages;
+        m_pageStartIdx = first;
+        m_pageEndIdx = last;
+
+        if (m_countText) {
+            m_countText->setString(fmt::format("{} to {} of {}", first, last, m_fields->m_totalLevels).c_str());
+        }
+        if (m_pageText) {
+            m_pageText->setString(numToString(m_fields->m_page + 1).c_str());
+        }
+
+        if (m_leftArrow) m_leftArrow->setVisible(m_fields->m_page > 0);
+        if (m_rightArrow) m_rightArrow->setVisible(m_fields->m_page + 1 < totalPages);
+        if (m_lastBtn) m_lastBtn->setVisible(totalPages > 1 && m_fields->m_page + 1 < totalPages);
+        if (m_pageBtn) m_pageBtn->setVisible(totalPages > 1);
+        if (m_fields->m_randomPageButton) {
+            m_fields->m_randomPageButton->setVisible(totalPages > 1);
+        }
+
+        bool hideBar = false;
+        bool hideCompletionInfo = false;
+        if (auto mod = Mod::get()) {
+            hideBar = mod->getSavedValue<bool>("hide-bar");
+            hideCompletionInfo = mod->getSavedValue<bool>("hide-completion-info");
+        }
+
+        if (m_fields->m_progressBar) {
+            m_fields->m_progressBar->setVisible(m_fields->m_shouldShowProgressBar && !hideBar);
+        }
+        if (m_fields->m_completionInfoLabel) {
+            m_fields->m_completionInfoLabel->setVisible(!hideCompletionInfo);
+        }
+    }
+
+    void finishLevelGrindEmpty(char const* message) {
+        if (message) {
+            Notification::create(message, NotificationIcon::Info)->show();
+        }
+
+        m_fields->m_fetchingIDs = false;
+        m_fields->m_waitingForGDPage = false;
+        m_fields->m_allLevelIDs.clear();
+        m_fields->m_totalLevels = 0;
+        m_fields->m_totalPages = 1;
+        m_fields->m_page = 0;
+        m_fields->m_shouldShowProgressBar = false;
+        this->recalculateLevelGrindCompletionProgress();
+
+        auto empty = CCArray::create();
+        LevelBrowserLayer::loadLevelsFinished(empty, m_searchObject ? m_searchObject->getKey() : "", 0);
+        this->updateLevelGrindPageUI();
+    }
+
+    void loadLevelGrindPage() {
+        if (m_fields->m_allLevelIDs.empty()) {
+            this->finishLevelGrindEmpty(nullptr);
+            return;
+        }
+
+        auto startIdx = m_fields->m_page * PER_PAGE;
+        auto endIdx = std::min(startIdx + PER_PAGE, static_cast<int>(m_fields->m_allLevelIDs.size()));
+        if (startIdx >= static_cast<int>(m_fields->m_allLevelIDs.size())) {
+            m_fields->m_page = std::max(0, m_fields->m_totalPages - 1);
+            startIdx = m_fields->m_page * PER_PAGE;
+            endIdx = std::min(startIdx + PER_PAGE, static_cast<int>(m_fields->m_allLevelIDs.size()));
+        }
+
+        auto levelIDs = joinLevelIDs(m_fields->m_allLevelIDs, startIdx, endIdx);
+        auto object = GJSearchObject::create(SearchType::Type19, levelIDs);
+        if (!object) {
+            m_fields->m_waitingForGDPage = false;
+            Notification::create("Failed to create level search", NotificationIcon::Error)->show();
+            return;
+        }
+
+        m_fields->m_waitingForGDPage = true;
+        this->updateLevelGrindPageUI();
+        LevelBrowserLayer::loadPage(object);
+    }
+
+    void fetchLevelGrindIDs() {
+        if (m_fields->m_fetchingIDs) return;
+
+        m_fields->m_searchTask.cancel();
+        m_fields->m_fetchingIDs = true;
+        m_fields->m_waitingForGDPage = false;
+
+        matjson::Value body;
+        auto const& params = m_fields->m_params;
+        if (!params.difficulties.empty()) body["difficulties"] = params.difficulties;
+        if (!params.lengths.empty()) body["lengths"] = params.lengths;
+        if (!params.demonDifficulties.empty()) body["demonDifficulties"] = params.demonDifficulties;
+        if (!params.grindTypes.empty()) body["grindTypes"] = params.grindTypes;
+        if (!params.versions.empty()) body["versions"] = params.versions;
+        body["newerFirst"] = params.newerFirst;
+        body["recentlyAdded"] = params.recentlyAdded;
+
+        auto req = web::WebRequest();
+        req.bodyJSON(body);
+
+        WeakRef<LGLevelBrowserLayerCompat> weakSelf = this;
+        m_fields->m_searchTask.spawn(
+            req.post("https://api.delivel.tech/get_levels"),
+            [weakSelf](web::WebResponse const& res) {
+                auto self = weakSelf.lock();
+                if (!self || !self->getParent() || !self->isRunning()) return;
+
+                self->m_fields->m_fetchingIDs = false;
+
+                if (!res.ok()) {
+                    Notification::create("Failed to fetch levels", NotificationIcon::Error)->show();
+                    self->finishLevelGrindEmpty(nullptr);
+                    return;
+                }
+
+                auto jsonRes = res.json();
+                if (!jsonRes) {
+                    Notification::create("Invalid response from server", NotificationIcon::Error)->show();
+                    self->finishLevelGrindEmpty(nullptr);
+                    return;
+                }
+
+                auto json = jsonRes.unwrap();
+                int totalCount = 0;
+                if (json.contains("count")) {
+                    if (auto count = json["count"].as<int>()) {
+                        totalCount = count.unwrap();
+                    }
+                }
+
+                if (totalCount == 0) {
+                    self->finishLevelGrindEmpty("No levels found");
+                    return;
+                }
+
+                std::vector<int> allIDs;
+                if (json.contains("ids")) {
+                    if (auto arrRes = json["ids"].asArray()) {
+                        for (auto id : arrRes.unwrap()) {
+                            if (auto idVal = id.asInt()) {
+                                allIDs.push_back(idVal.unwrap());
+                            }
+                        }
+                    }
+                }
+
+                if (allIDs.empty()) {
+                    self->finishLevelGrindEmpty("No levels found");
+                    return;
+                }
+
+                std::vector<int> filteredIDs;
+                bool onlyUncompleted = false;
+                bool onlyCompleted = false;
+
+                if (auto mod = Mod::get()) {
+                    onlyUncompleted = mod->getSavedValue<bool>("only-uncompleted");
+                    onlyCompleted = mod->getSavedValue<bool>("only-completed");
+                }
+
+                if (onlyUncompleted || onlyCompleted) {
+                    if (auto gsm = GameStatsManager::sharedState()) {
+                        for (auto id : allIDs) {
+                            auto isCompleted = gsm->hasCompletedOnlineLevel(id);
+                            if ((onlyUncompleted && !isCompleted) || (onlyCompleted && isCompleted)) {
+                                filteredIDs.push_back(id);
+                            }
+                        }
+                    } else {
+                        filteredIDs = allIDs;
+                    }
+                } else {
+                    filteredIDs = allIDs;
+                }
+
+                if (filteredIDs.empty()) {
+                    self->finishLevelGrindEmpty(
+                        onlyUncompleted ? "No uncompleted levels found" :
+                        onlyCompleted ? "No completed levels found" :
+                        "No levels found"
+                    );
+                    return;
+                }
+
+                self->m_fields->m_allLevelIDs = std::move(filteredIDs);
+                self->m_fields->m_totalLevels = static_cast<int>(self->m_fields->m_allLevelIDs.size());
+                self->m_fields->m_totalPages = std::max(
+                    1,
+                    (self->m_fields->m_totalLevels + PER_PAGE - 1) / PER_PAGE
+                );
+                self->m_fields->m_shouldShowProgressBar = !onlyUncompleted && !onlyCompleted;
+                if (self->m_fields->m_page >= self->m_fields->m_totalPages) {
+                    self->m_fields->m_page = std::max(0, self->m_fields->m_totalPages - 1);
+                }
+
+                self->recalculateLevelGrindCompletionProgress();
+                self->loadLevelGrindPage();
+            }
+        );
+    }
+};
 
 LGLevelBrowserLayer* LGLevelBrowserLayer::create(
     std::vector<int> difficulties, 

@@ -1375,7 +1375,7 @@ void LevelGrindLayer::onInsane(CCObject* sender) {
 }
 
 void LevelGrindLayer::onSearchBtn(CCObject* sender) {
-	auto layer = LGLevelBrowserLayer::create(
+	auto layer = LGLevelBrowserLayer::createCompatible(
 		difficulties,
 		lengths,
 		grindTypes,
@@ -1384,6 +1384,10 @@ void LevelGrindLayer::onSearchBtn(CCObject* sender) {
 		Mod::get()->getSavedValue<bool>("newer-first"),
 		Mod::get()->getSavedValue<bool>("recently-added")
 	);
+	if (!layer) {
+		Notification::create("Failed to open Level Grind browser", NotificationIcon::Error)->show();
+		return;
+	}
 
 	auto scene = CCScene::create();
 	scene->addChild(layer);
